@@ -135,20 +135,20 @@ class DDQNAgent:
 
             '''DDQ Network'''
             self.qnetwork_local = DDQNetwork(self.state_size,
-                                            self.action_size,
-                                            self.network_type,
-                                            seed).to(self.device)
+                                             self.action_size,
+                                             self.network_type,
+                                             seed).to(self.device)
             self.qnetwork_target = DDQNetwork(self.state_size,
-                                            self.action_size,
-                                            self.network_type,
-                                            seed).to(self.device)
+                                              self.action_size,
+                                              self.network_type,
+                                              seed).to(self.device)
             self.optimizer = optim.Adam(
                 self.qnetwork_local.parameters(), lr=self.LR
             )
 
             self.replay_memory = ReplayBuffer(self.BUFFER_SIZE,
-                                            self.BATCH_SIZE,
-                                            seed, self.device)
+                                              self.BATCH_SIZE,
+                                              seed, self.device)
 
     def update_hyperparameters(self, **kwargs):
         '''The function updates hyper parameters overriding the
@@ -182,9 +182,10 @@ class DDQNAgent:
         state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
         self.qnetwork_local.eval()
         with torch.no_grad():
-            action_values = self.qnetwork_local(state)
+            action_values = self.qnetwork_local(
+                state
+            ).cpu().data.numpy().squeeze(0)
         self.qnetwork_local.train()
-
         action = epsilon_greedy(action_values, self.action_size, self.eps)
         return action, action_values
 
