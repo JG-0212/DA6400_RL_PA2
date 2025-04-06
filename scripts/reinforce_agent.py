@@ -92,7 +92,7 @@ class ReinforceMCwithoutBaselineAgent:
                                             self.action_size,
                                             seed).to(self.device)
 
-        self.optimizer = optim.Adam(
+        self.policy_optimizer = optim.Adam(
             self.policy_network.parameters(), lr=self.LR_POLICY
         )
 
@@ -115,21 +115,34 @@ class ReinforceMCwithoutBaselineAgent:
 
         discounted_returns.reverse()
 
-        for step, G in zip(self.episode_history, discounted_returns):
-            state, action, reward = step.state, step.action, step.reward
-            state = torch.tensor(state, dtype=torch.float32,
-                                 device=self.device).unsqueeze(0)
+        states = torch.tensor(
+            np.array([e.state for e in self.episode_history]),
+            dtype=torch.float32,
+            device=self.device
+        )
+        actions = torch.tensor(
+            np.array([e.action for e in self.episode_history]),
+            dtype=torch.long,
+            device=self.device
+        )
+        returns = torch.tensor(
+            np.array(discounted_returns),
+            dtype=torch.float32,
+            device=self.device
+        )
 
-            action_probs = self.policy_network(state)
-            action_dist = Categorical(action_probs)
-            log_prob = action_dist.log_prob(torch.tensor(
-                action, dtype=torch.long, device=self.device))
+        action_probs = self.policy_network(states)
+        dist = Categorical(action_probs)
+        log_probs = dist.log_prob(actions)
 
-            loss = -log_prob*G
+        policy_loss = -(log_probs * returns).mean()
 
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
+        self.policy_optimizer.zero_grad()
+        policy_loss.backward()
+        for param in self.policy_network.parameters():
+            if param.grad is not None:
+                param.grad.data.clamp_(-1, 1)
+        self.policy_optimizer.step()
 
         self.episode_history.clear()
 
@@ -206,54 +219,52 @@ class ReinforceMCwithBaselineAgent:
         self.reset()
 
     def update_agent_parameters(self):
-
+        # Step 1: Compute full returns (G_t) for each timestep
         discounted_returns = []
         G = 0
         for step in reversed(self.episode_history):
             G = step.reward + self.GAMMA * G
             discounted_returns.append(G)
-
         discounted_returns.reverse()
 
-        for step, G in zip(self.episode_history, discounted_returns):
-            state, action, reward, next_state = step.state, step.action, step.reward, step.next_state
-            state = torch.tensor(state, dtype=torch.float32,
-                                 device=self.device).unsqueeze(0)
-            next_state = torch.tensor(next_state, dtype=torch.float32,
-                                 device=self.device).unsqueeze(0)
-            G = torch.tensor([G], dtype=torch.float32,
-                             device=self.device).unsqueeze(0)
+        states = torch.tensor(
+            np.array([e.state for e in self.episode_history]),
+            dtype=torch.float32,
+            device=self.device
+        )
+        actions = torch.tensor(
+            np.array([e.action for e in self.episode_history]),
+            dtype=torch.long,
+            device=self.device
+        )
+        returns = torch.tensor(
+            np.array(discounted_returns),
+            dtype=torch.float32,
+            device=self.device
+        )
 
-            state_value = self.value_network(state)
-            next_state_value = self.value_network(next_state)
-            action_probs = self.policy_network(state)
+        state_values = self.value_network(states).squeeze()
+        action_probs = self.policy_network(states)
+        dist = Categorical(action_probs)
+        log_probs = dist.log_prob(actions)
 
-            action_dist = Categorical(action_probs)
-            log_prob = action_dist.log_prob(torch.tensor(
-                action, dtype=torch.long, device=self.device))
+        value_loss = F.mse_loss(state_values, returns)
+        advantages = returns - state_values.detach()
+        policy_loss = -(log_probs * advantages).mean()
 
-            # value_loss = F.mse_loss(state_value, G)
-            value_loss = F.mse_loss(
-                state_value,
-                reward + self.GAMMA*next_state_value
-            )
-
-            baseline = state_value.detach()
-            policy_loss = -log_prob*(G - baseline)
-
-            self.value_optimizer.zero_grad()
-            value_loss.backward()
-            for param in self.value_network.parameters():
+        self.value_optimizer.zero_grad()
+        value_loss.backward()
+        for param in self.value_network.parameters():
+            if param.grad is not None:
                 param.grad.data.clamp_(-1, 1)
+        self.value_optimizer.step()
 
-            self.value_optimizer.step()
-
-            self.policy_optimizer.zero_grad()
-            policy_loss.backward()
-            for param in self.policy_network.parameters():
+        self.policy_optimizer.zero_grad()
+        policy_loss.backward()
+        for param in self.policy_network.parameters():
+            if param.grad is not None:
                 param.grad.data.clamp_(-1, 1)
-
-            self.policy_optimizer.step()
+        self.policy_optimizer.step()
 
         self.episode_history.clear()
 
