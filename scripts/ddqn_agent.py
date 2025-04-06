@@ -159,7 +159,7 @@ class DDQNAgent:
 
         self.reset()
 
-    def update_agent_parameters(self, episode_history):
+    def update_agent_parameters(self):
         if self.decay_type == 'linear':
             self.eps = max(self.eps_end, self.eps - self.eps_decay)
         elif self.decay_type == 'exponential':

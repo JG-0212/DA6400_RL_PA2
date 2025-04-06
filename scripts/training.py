@@ -44,14 +44,14 @@ class Trainer:
             while not (terminated or truncated):
                 action, action_vals = agent.act(state)
                 next_state, reward, terminated, truncated, _ = env.step(action)
-                episode_history.append((state, action, reward))
+                episode_history.append((state, action, reward, next_state))
                 done = (terminated or truncated)
                 agent.step(state, action, reward, next_state, done)
                 state = next_state
                 score += self.compute_score(reward)
                 total_reward += reward
 
-            agent.update_agent_parameters(episode_history)
+            agent.update_agent_parameters()
 
             history_scores.append(score)
             history_total_rewards.append(score)
