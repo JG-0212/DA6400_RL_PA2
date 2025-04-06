@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from scripts.ddqn_agent import DDQNAgent
-from scripts.reinforce_agent import ReinforceMCwithBaselineAgent
+from scripts.reinforce_agent import ReinforceMCwithBaselineAgent, ReinforceMCwithoutBaselineAgent
 
 
 class Trainer:
@@ -167,7 +167,9 @@ def test_agent(env, agent, trainer, hyperparameter_list, num_experiments=5):
             num_episodes = test_hyperparameters["num_episodes"]
 
             if isinstance(agent, DDQNAgent):
-                label = "DDQN"
+                label = f"DDQN Type {agent.network_type}"
+            elif isinstance(agent, ReinforceMCwithoutBaselineAgent):
+                label = "REINFORCE MC (without baseline)"
             elif isinstance(agent, ReinforceMCwithBaselineAgent):
                 label = "REINFORCE MC (with baseline)"
 
