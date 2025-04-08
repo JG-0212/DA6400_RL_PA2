@@ -12,21 +12,23 @@ from scripts.helpers import epsilon_greedy, softmax, compute_decay
 
 class PolicyNetwork(nn.Module):
 
-    def __init__(self, state_size, action_size, seed):
+    def __init__(self, state_size, action_size, seed, hidden_layer_sizes=[64, 64, 64]):
         super().__init__()
 
         self.seed = torch.manual_seed(seed)
 
-        self.network = nn.Sequential(
-            nn.Linear(in_features=state_size, out_features=64),
-            nn.ReLU(),
-            nn.Linear(in_features=64, out_features=64),
-            nn.ReLU(),
-            nn.Linear(in_features=64, out_features=64),
-            nn.ReLU(),
-            nn.Linear(in_features=64, out_features=action_size),
-            nn.Softmax(dim=1)
-        )
+        layers = []
+        input_size = state_size
+
+        for hidden_size in hidden_layer_sizes:
+            layers.append(nn.Linear(input_size, hidden_size))
+            layers.append(nn.ReLU())
+            input_size = hidden_size
+
+        layers.append(nn.Linear(input_size, action_size))
+        layers.append(nn.Softmax(dim=1))
+
+        self.network = nn.Sequential(*layers)
 
     def forward(self, observation):
 
@@ -36,20 +38,22 @@ class PolicyNetwork(nn.Module):
 
 class ValueNetwork(nn.Module):
 
-    def __init__(self, state_size, seed):
+    def __init__(self, state_size, seed, hidden_layer_sizes=[64, 64, 64]):
         super().__init__()
 
         self.seed = torch.manual_seed(seed)
 
-        self.network = nn.Sequential(
-            nn.Linear(in_features=state_size, out_features=64),
-            nn.ReLU(),
-            nn.Linear(in_features=64, out_features=64),
-            nn.ReLU(),
-            nn.Linear(in_features=64, out_features=64),
-            nn.ReLU(),
-            nn.Linear(in_features=64, out_features=1)
-        )
+        layers = []
+        input_size = state_size
+
+        for hidden_size in hidden_layer_sizes:
+            layers.append(nn.Linear(input_size, hidden_size))
+            layers.append(nn.ReLU())
+            input_size = hidden_size
+
+        layers.append(nn.Linear(input_size, 1))
+
+        self.network = nn.Sequential(*layers)
 
     def forward(self, observation):
 
@@ -88,9 +92,12 @@ class ReinforceMCwithoutBaselineAgent:
         self.episode_history.clear()
 
         '''Network'''
-        self.policy_network = PolicyNetwork(self.state_size,
-                                            self.action_size,
-                                            seed).to(self.device)
+        self.policy_network = PolicyNetwork(
+            self.state_size,
+            self.action_size,
+            seed,
+            hidden_layer_sizes=[64, 32]
+        ).to(self.device)
 
         self.policy_optimizer = optim.Adam(
             self.policy_network.parameters(), lr=self.LR_POLICY
@@ -134,8 +141,11 @@ class ReinforceMCwithoutBaselineAgent:
         action_probs = self.policy_network(states)
         dist = Categorical(action_probs)
         log_probs = dist.log_prob(actions)
+        discounts = self.GAMMA**torch.arange(0, len(self.episode_history),
+                                             dtype=torch.float32,
+                                             device=self.device)
 
-        policy_loss = -(log_probs * returns).mean()
+        policy_loss = -(discounts * returns * log_probs).mean()
 
         self.policy_optimizer.zero_grad()
         policy_loss.backward()
@@ -197,11 +207,19 @@ class ReinforceMCwithBaselineAgent:
         self.episode_history.clear()
 
         '''Network'''
-        self.policy_network = PolicyNetwork(self.state_size,
-                                            self.action_size,
-                                            seed).to(self.device)
-        self.value_network = ValueNetwork(self.state_size,
-                                          seed).to(self.device)
+        self.policy_network = PolicyNetwork(
+            self.state_size,
+            self.action_size,
+            seed,
+            hidden_layer_sizes=[64, 64, 64]
+        ).to(self.device)
+
+        self.value_network = ValueNetwork(
+            self.state_size,
+            seed,
+            hidden_layer_sizes=[64, 64]
+        ).to(self.device)
+
         self.policy_optimizer = optim.Adam(
             self.policy_network.parameters(), lr=self.LR_POLICY
         )
@@ -247,10 +265,13 @@ class ReinforceMCwithBaselineAgent:
         action_probs = self.policy_network(states)
         dist = Categorical(action_probs)
         log_probs = dist.log_prob(actions)
+        discounts = self.GAMMA**torch.arange(0, len(self.episode_history),
+                                             dtype=torch.float32,
+                                             device=self.device)
 
         value_loss = F.mse_loss(state_values, returns)
         advantages = returns - state_values.detach()
-        policy_loss = -(log_probs * advantages).mean()
+        policy_loss = -(discounts * advantages * log_probs).mean()
 
         self.value_optimizer.zero_grad()
         value_loss.backward()
