@@ -60,6 +60,8 @@ def main():
             }
 
         ]]
+    
+    run.name = repr(ddqn_type2_hyperparameter_list[0]).strip("{}")
 
     env = gym.make('Acrobot-v1', render_mode="rgb_array")
     env = RecordVideo(
