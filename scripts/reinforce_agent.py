@@ -184,6 +184,7 @@ class ReinforceMCwithBaselineAgent:
         '''Hyperparameters'''
         self.LR_POLICY = 5e-4               # learning rate for policy
         self.LR_VALUE = 5e-3              # learning rate for value
+        self.UPDATE_EVERY = 20
 
         self.device = device
 
@@ -205,6 +206,7 @@ class ReinforceMCwithBaselineAgent:
 
     def reset(self, seed=0):
         self.episode_history.clear()
+        self.time_step = 0
 
         '''Network'''
         self.policy_network = PolicyNetwork(
@@ -214,7 +216,13 @@ class ReinforceMCwithBaselineAgent:
             hidden_layer_sizes=[64, 64, 64]
         ).to(self.device)
 
-        self.value_network = ValueNetwork(
+        self.value_network_local = ValueNetwork(
+            self.state_size,
+            seed,
+            hidden_layer_sizes=[64, 64]
+        ).to(self.device)
+
+        self.value_network_target = ValueNetwork(
             self.state_size,
             seed,
             hidden_layer_sizes=[64, 64]
@@ -224,7 +232,7 @@ class ReinforceMCwithBaselineAgent:
             self.policy_network.parameters(), lr=self.LR_POLICY
         )
         self.value_optimizer = optim.Adam(
-            self.value_network.parameters(), lr=self.LR_VALUE
+            self.value_network_local.parameters(), lr=self.LR_VALUE
         )
 
     def update_hyperparameters(self, **kwargs):
@@ -237,7 +245,6 @@ class ReinforceMCwithBaselineAgent:
         self.reset()
 
     def update_agent_parameters(self):
-        # Step 1: Compute full returns (G_t) for each timestep
         discounted_returns = []
         G = 0
         for step in reversed(self.episode_history):
@@ -255,13 +262,32 @@ class ReinforceMCwithBaselineAgent:
             dtype=torch.long,
             device=self.device
         )
+        rewards = torch.tensor(
+            np.array([e.reward for e in self.episode_history]),
+            dtype=torch.float32,
+            device=self.device
+        )
+        next_states = torch.tensor(
+            np.array([e.next_state for e in self.episode_history]),
+            dtype=torch.float32,
+            device=self.device
+        )
+        dones = torch.tensor(
+            np.array([e.done for e in self.episode_history]),
+            dtype=torch.float32,
+            device=self.device
+        )
         returns = torch.tensor(
             np.array(discounted_returns),
             dtype=torch.float32,
             device=self.device
         )
 
-        state_values = self.value_network(states).squeeze()
+        state_values = self.value_network_local(states).squeeze()
+        next_state_values = self.value_network_target(
+            next_states
+        ).detach().squeeze()
+
         action_probs = self.policy_network(states)
         dist = Categorical(action_probs)
         log_probs = dist.log_prob(actions)
@@ -269,13 +295,14 @@ class ReinforceMCwithBaselineAgent:
                                              dtype=torch.float32,
                                              device=self.device)
 
-        value_loss = F.mse_loss(state_values, returns)
+        td_targets = rewards + self.GAMMA*next_state_values*(1-dones)
+        value_loss = F.mse_loss(state_values, td_targets)
         advantages = returns - state_values.detach()
         policy_loss = -(discounts * advantages * log_probs).mean()
 
         self.value_optimizer.zero_grad()
         value_loss.backward()
-        for param in self.value_network.parameters():
+        for param in self.value_network_local.parameters():
             if param.grad is not None:
                 param.grad.data.clamp_(-1, 1)
         self.value_optimizer.step()
@@ -288,6 +315,12 @@ class ReinforceMCwithBaselineAgent:
         self.policy_optimizer.step()
 
         self.episode_history.clear()
+
+        self.time_step = (self.time_step + 1)%self.UPDATE_EVERY
+        if self.time_step == 0:
+            self.value_network_target.load_state_dict(
+                self.value_network_local.state_dict()
+            )
 
     def step(self, state, action, reward, next_state, done):
         e = self.experience(state, action, reward, next_state, done)
