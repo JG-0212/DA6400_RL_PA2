@@ -151,7 +151,7 @@ class ReinforceMCwithoutBaselineAgent:
         policy_loss.backward()
         for param in self.policy_network.parameters():
             if param.grad is not None:
-                param.grad.data.clamp_(-1, 1)
+                param.grad.data.clamp_(-5, 5)
         self.policy_optimizer.step()
 
         self.episode_history.clear()

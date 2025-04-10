@@ -1,0 +1,22 @@
+program: cartpole_ddqn_t1_tune.py
+name: cartpole_ddqn_t1_sweep
+project: DA6400_RL_PA2
+entity: me21b096-indian-institute-of-technology-madras
+method: bayes
+metric:
+  goal: minimize
+  name: regret
+parameters:
+  batch_size:
+    values: [256, 512, 1024]
+  update_every:
+    values: [10, 20, 40, 80]
+  learning_rate:
+    values: [1e-3, 1e-4, 1e-5]
+  frac_episodes_to_decay:
+    values:  [0.3, 0.5, 0.7, 1]
+  
+# Ensure it runs using your virtual environment
+command:
+  - /home/lalit/my_venvs/rl_env/bin/python
+  - ${program}  
