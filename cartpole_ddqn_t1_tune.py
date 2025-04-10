@@ -84,13 +84,13 @@ def main():
 
     env.close()
 
-    for score in ddqn_type1_results["means"]:
+    for score in ddqn_type1_results[0]["means"]:
         wandb.log(
             {
                 "score": score
             }
         )
-    for moving_avg in ddqn_type1_results["rolling_means"]:
+    for moving_avg in ddqn_type1_results[0]["rolling_means"]:
         wandb.log(
             {
                 "mean_score": moving_avg
@@ -98,8 +98,8 @@ def main():
         )
 
     wandb.log({
-        "max_mean_score": np.max(ddqn_type1_results["rolling_means"]),
-        "regret": num_episodes*max_return - np.sum(ddqn_type1_results["means"])
+        "max_mean_score": np.max(ddqn_type1_results[0]["rolling_means"]),
+        "regret": num_episodes*max_return - np.sum(ddqn_type1_results[0]["means"])
     })
 
 

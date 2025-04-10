@@ -42,7 +42,7 @@ def main():
     # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     device = 'cpu'
     num_episodes = 1000
-    max_return = 500
+    max_return = -100
     ddqn_type2_hyperparameter_list = [
 
         process_hyperparameters_ddqn(_) for _ in [
