@@ -1,0 +1,20 @@
+program: acrobot_reinforce_t2_tune.py
+name: acrobot_reinforce_t2_sweep
+project: DA6400_RL_PA2
+entity: me21b096-indian-institute-of-technology-madras
+method: bayes
+metric:
+  goal: minimize
+  name: regret
+parameters:
+  learning_rate_policy:
+    values: [1e-3, 2e-3, 3e-3, 4e-3, 5e-3, 1e-4, 2e-4, 3e-4, 4e-4, 5e-4, 1e-5, 2e-5, 3e-5, 4e-5, 5e-5]
+  multiplier:
+    values: [1, 2, 5, 10]
+  update_every:
+    values: [10, 20, 40]
+
+# Ensure it runs using your virtual environment
+command:
+  - /home/lalit/my_venvs/rl_env/bin/python
+  - ${program}  
