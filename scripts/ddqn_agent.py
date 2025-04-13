@@ -12,6 +12,18 @@ from scripts.helpers import epsilon_greedy, softmax, compute_decay
 class DDQNetwork(nn.Module):
 
     def __init__(self, state_size, action_size, network_type, seed):
+        """
+        Dueling Deep Q-Network (DDQN)
+
+        Args:
+            state_size (int): Dimension of the input state space.
+            action_size (int): Total number of possible discrete actions.
+            network_type (int): Type of dueling aggregation.
+                - 1: Mean variant of DDQN.
+                - 2: Max variant of DDQN.
+            seed (int): Random seed for reproducibility.
+        """
+
         super().__init__()
 
         self.seed = torch.manual_seed(seed)
@@ -46,10 +58,12 @@ class DDQNetwork(nn.Module):
         advantages = self.advantage_head(x)
 
         if self.network_type == 1:
+            # Mean variant
             q_values = (state_value
                         + (advantages - torch.mean(advantages,
                                                    dim=1, keepdim=True)))
         elif self.network_type == 2:
+            # Max variant
             q_values = (state_value
                         + (advantages - torch.max(advantages,
                                                   dim=1, keepdim=True)[0]))
@@ -59,6 +73,15 @@ class DDQNetwork(nn.Module):
 class ReplayBuffer:
 
     def __init__(self, buffer_size, batch_size, seed, device='cpu'):
+        """
+        Replay buffer to store experience tuples.
+
+        Args:
+            buffer_size (int): Maximum number of experiences the buffer can hold.
+            batch_size (int): Number of experiences to sample during training.
+            seed (int): Random seed for reproducibility.
+            device (str, optional): Device to which sampled tensors are moved
+        """
 
         self.memory = deque(maxlen=buffer_size)
         self.batch_size = batch_size
@@ -98,14 +121,26 @@ class ReplayBuffer:
 class DDQNAgent:
 
     def __init__(self, state_space, action_space, network_type, seed, device='cpu'):
+        """
+        The Dueling DQN Agent.
 
-        self.GAMMA = 0.99            # discount factor
+        Args:
+            state_space (gym.Space): Environment state space.
+            action_space (gym.Space): Environment action space.
+            network_type (int): Variant to use.
+                - 1: Mean-based advantage variant.
+                - 2: Max-based advantage variant.
+            seed (int): Random seed for reproducibility.
+            device (str, optional): Device for computation.
+        """
+
+        self.GAMMA = 0.99        # discount factor
 
         '''Hyperparameters'''
         self.BUFFER_SIZE = None  # replay buffer size
-        self.BATCH_SIZE = None        # minibatch size
-        self.LR = None               # learning rate
-        # how often to update the network (When Q target is present)
+        self.BATCH_SIZE = None   # minibatch size
+        self.LR = None           # learning rate
+        # how often to update the target network
         self.UPDATE_EVERY = None
 
         self.device = device
@@ -133,7 +168,7 @@ class DDQNAgent:
             self.eps = self.eps_start
             self.time_step = 0
 
-            '''DDQ Network'''
+            '''Dueling Deep Q-Network'''
             self.qnetwork_local = DDQNetwork(self.state_size,
                                              self.action_size,
                                              self.network_type,
@@ -151,34 +186,41 @@ class DDQNAgent:
                                               seed, self.device)
 
     def update_hyperparameters(self, **kwargs):
-        '''The function updates hyper parameters overriding the
+        """The function updates hyper parameters overriding the
         default values
-        '''
+        """
         for key, value in kwargs.items():
             setattr(self, key, value)
 
         self.reset()
 
     def update_agent_parameters(self):
+        """Updates epsilon (for epsilon-greedy action selection by the agent)
+        """
         if self.decay_type == 'linear':
             self.eps = max(self.eps_end, self.eps - self.eps_decay)
         elif self.decay_type == 'exponential':
             self.eps = max(self.eps_end, self.eps*self.eps_decay)
 
     def step(self, state, action, reward, next_state, done):
-
+        
+        # Store experiences, to be used for training the agent later
         self.replay_memory.add(state, action, reward, next_state, done)
 
+        # If buffer has enough samples, update the Q-network
         if len(self.replay_memory) >= self.BATCH_SIZE:
             experiences = self.replay_memory.sample()
             self.learn(experiences)
 
+        # Update the target network with values from local network
         self.time_step = (self.time_step + 1) % self.UPDATE_EVERY
         if self.time_step == 0:
             self.qnetwork_target.load_state_dict(
                 self.qnetwork_local.state_dict())
 
     def act(self, state):
+        """Epsilon-greedy action selection by the agent
+        """
         state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
         self.qnetwork_local.eval()
         with torch.no_grad():
@@ -186,17 +228,23 @@ class DDQNAgent:
                 state
             ).cpu().data.numpy().squeeze(0)
         self.qnetwork_local.train()
+
         action = epsilon_greedy(action_values, self.action_size, self.eps)
         return action, action_values
 
     def learn(self, experiences):
+        """Update the Q-network using gathered experiences
+        """
 
+        # Unpack transitions
         states, actions, rewards, next_states, dones = experiences
 
+        # Get target Q-Values of next states from the target network by maximizing over actions 
         q_targets_next = self.qnetwork_target(
             next_states
         ).detach().max(1)[0].unsqueeze(1)
 
+        # Get the target values based on the TD update rule
         q_targets = rewards + (self.GAMMA * q_targets_next * (1 - dones))
         q_expected = self.qnetwork_local(states).gather(1, actions)
 
