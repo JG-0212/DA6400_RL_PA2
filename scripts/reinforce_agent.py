@@ -262,31 +262,14 @@ class ReinforceMCwithBaselineAgent:
             dtype=torch.long,
             device=self.device
         )
-        rewards = torch.tensor(
-            np.array([e.reward for e in self.episode_history]),
-            dtype=torch.float32,
-            device=self.device
-        )
-        next_states = torch.tensor(
-            np.array([e.next_state for e in self.episode_history]),
-            dtype=torch.float32,
-            device=self.device
-        )
-        dones = torch.tensor(
-            np.array([e.done for e in self.episode_history]),
-            dtype=torch.float32,
-            device=self.device
-        )
         returns = torch.tensor(
             np.array(discounted_returns),
             dtype=torch.float32,
             device=self.device
         )
 
-        state_values = self.value_network_local(states).squeeze()
-        next_state_values = self.value_network_target(
-            next_states
-        ).detach().squeeze()
+        with torch.no_grad():
+            state_values = self.value_network_local(states).detach().squeeze()
 
         action_probs = self.policy_network(states)
         dist = Categorical(action_probs)
@@ -295,17 +278,8 @@ class ReinforceMCwithBaselineAgent:
                                              dtype=torch.float32,
                                              device=self.device)
 
-        td_targets = rewards + self.GAMMA*next_state_values*(1-dones)
-        value_loss = F.mse_loss(state_values, td_targets)
-        advantages = returns - state_values.detach()
+        advantages = returns - state_values
         policy_loss = -(discounts * advantages * log_probs).mean()
-
-        self.value_optimizer.zero_grad()
-        value_loss.backward()
-        for param in self.value_network_local.parameters():
-            if param.grad is not None:
-                param.grad.data.clamp_(-1, 1)
-        self.value_optimizer.step()
 
         self.policy_optimizer.zero_grad()
         policy_loss.backward()
@@ -316,15 +290,33 @@ class ReinforceMCwithBaselineAgent:
 
         self.episode_history.clear()
 
-        self.time_step = (self.time_step + 1)%self.UPDATE_EVERY
+
+    def step(self, state, action, reward, next_state, done):
+        e = self.experience(state, action, reward, next_state, done)
+
+        self.episode_history.append(e)
+
+        state = torch.tensor(np.array([state]), dtype=torch.float32, device=self.device)
+        next_state = torch.tensor(np.array([next_state]), dtype=torch.float32, device=self.device)
+
+        state_value = self.value_network_local(state).squeeze()
+        next_state_value = self.value_network_target(next_state).squeeze()
+
+        td_target = reward + self.GAMMA*next_state_value*(1-done)
+        value_loss = F.mse_loss(state_value, td_target)
+
+        self.value_optimizer.zero_grad()
+        value_loss.backward()
+        for param in self.value_network_local.parameters():
+            if param.grad is not None:
+                param.grad.data.clamp_(-1, 1)
+        self.value_optimizer.step()
+
+        self.time_step = (self.time_step + 1) % self.UPDATE_EVERY
         if self.time_step == 0:
             self.value_network_target.load_state_dict(
                 self.value_network_local.state_dict()
             )
-
-    def step(self, state, action, reward, next_state, done):
-        e = self.experience(state, action, reward, next_state, done)
-        self.episode_history.append(e)
 
     def act(self, state):
         state = torch.tensor(state, dtype=torch.float32,
