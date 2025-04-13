@@ -145,7 +145,7 @@ class ReinforceMCwithoutBaselineAgent:
                                              dtype=torch.float32,
                                              device=self.device)
 
-        policy_loss = -(discounts * returns * log_probs).mean()
+        policy_loss = -(discounts * returns * log_probs).sum()
 
         self.policy_optimizer.zero_grad()
         policy_loss.backward()
