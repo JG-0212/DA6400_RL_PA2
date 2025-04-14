@@ -13,6 +13,16 @@ from scripts.helpers import epsilon_greedy, softmax, compute_decay
 class PolicyNetwork(nn.Module):
 
     def __init__(self, state_size, action_size, seed, hidden_layer_sizes=[64, 64, 64]):
+        """A configurable policy network that maps the input state to output probabilites for choosing each action.
+
+        Args:
+            state_size (int): Dimension of the input state space.
+            action_size (int): Total number of possible discrete actions.
+            seed (int): Random seed for reproducibility.
+            hidden_layer_sizes (list of int, optional): List defining the hidden layers. 
+                - The length of the list determines the number of hidden layers, 
+                - Each value specifies the number of units in that layer.
+        """
         super().__init__()
 
         self.seed = torch.manual_seed(seed)
@@ -39,6 +49,15 @@ class PolicyNetwork(nn.Module):
 class ValueNetwork(nn.Module):
 
     def __init__(self, state_size, seed, hidden_layer_sizes=[64, 64, 64]):
+        """A configurable value network that maps the input state to a state-value.
+
+        Args:
+            state_size (int): Dimension of the input state space.
+            seed (int): Random seed for reproducibility.
+            hidden_layer_sizes (list of int, optional): List defining the hidden layers. 
+                - The length of the list determines the number of hidden layers, 
+                - Each value specifies the number of units in that layer.
+        """
         super().__init__()
 
         self.seed = torch.manual_seed(seed)
@@ -64,11 +83,20 @@ class ValueNetwork(nn.Module):
 class ReinforceMCwithoutBaselineAgent:
 
     def __init__(self, state_space, action_space, seed, device='cpu'):
+        """
+        The Monte-Carlo REINFORCE Agent (without baseline).
 
-        self.GAMMA = 0.99            # discount factor
+        Args:
+            state_space (gym.Space): Environment state space.
+            action_space (gym.Space): Environment action space.
+            seed (int): Random seed for reproducibility.
+            device (str, optional): Device for computation.
+        """
+
+        self.GAMMA = 0.99       # discount factor
 
         '''Hyperparameters'''
-        self.LR_POLICY = 5e-4               # learning rate for policy
+        self.LR_POLICY = 5e-4   # learning rate for policy
 
         self.device = device
 
@@ -91,7 +119,7 @@ class ReinforceMCwithoutBaselineAgent:
     def reset(self, seed=0):
         self.episode_history.clear()
 
-        '''Network'''
+        '''Policy Network'''
         self.policy_network = PolicyNetwork(
             self.state_size,
             self.action_size,
@@ -104,16 +132,19 @@ class ReinforceMCwithoutBaselineAgent:
         )
 
     def update_hyperparameters(self, **kwargs):
-        '''The function updates hyper parameters overriding the
-        default values
-        '''
+        """This function updates hyperparameters overriding the
+        default values.
+        """
         for key, value in kwargs.items():
             setattr(self, key, value)
 
         self.reset()
 
     def update_agent_parameters(self):
+        """ Updates the Policy Network with a sampled trajectory, after every episode.
+        """
 
+        # Computing the discounted returns
         discounted_returns = []
         G = 0
         for step in reversed(self.episode_history):
@@ -122,6 +153,7 @@ class ReinforceMCwithoutBaselineAgent:
 
         discounted_returns.reverse()
 
+        # Unpack the experiences and Repack as torch.tensors
         states = torch.tensor(
             np.array([e.state for e in self.episode_history]),
             dtype=torch.float32,
@@ -138,6 +170,7 @@ class ReinforceMCwithoutBaselineAgent:
             device=self.device
         )
 
+        # Computing the log-probabilites for the chosen actions (to compute loss)
         action_probs = self.policy_network(states)
         dist = Categorical(action_probs)
         log_probs = dist.log_prob(actions)
@@ -145,6 +178,7 @@ class ReinforceMCwithoutBaselineAgent:
                                              dtype=torch.float32,
                                              device=self.device)
 
+        # Updating the Policy Network by accumulating the gradients
         policy_loss = -(discounts * returns * log_probs).sum()
 
         self.policy_optimizer.zero_grad()
@@ -154,13 +188,19 @@ class ReinforceMCwithoutBaselineAgent:
                 param.grad.data.clamp_(-5, 5)
         self.policy_optimizer.step()
 
+        # Clear the history (to store the next trajectory)
         self.episode_history.clear()
 
     def step(self, state, action, reward, next_state, done):
+        """Stores the state-transition for each step to 
+        episode_history (to be used after the episode to update the Policy Network). 
+        """
         e = self.experience(state, action, reward, next_state, done)
         self.episode_history.append(e)
 
     def act(self, state):
+        """Selects an action based on the probabilites output by the Policy Network.
+        """
         state = torch.tensor(state, dtype=torch.float32,
                              device=self.device).unsqueeze(0)
 
@@ -178,12 +218,22 @@ class ReinforceMCwithoutBaselineAgent:
 class ReinforceMCwithBaselineAgent:
 
     def __init__(self, state_space, action_space, seed, device='cpu'):
+        """
+        The Monte-Carlo REINFORCE Agent (with baseline).
 
-        self.GAMMA = 0.99            # discount factor
+        Args:
+            state_space (gym.Space): Environment state space.
+            action_space (gym.Space): Environment action space.
+            seed (int): Random seed for reproducibility.
+            device (str, optional): Device for computation.
+        """
+
+        self.GAMMA = 0.99        # discount factor
 
         '''Hyperparameters'''
-        self.LR_POLICY = 5e-4               # learning rate for policy
-        self.LR_VALUE = 5e-3              # learning rate for value
+        self.LR_POLICY = 5e-4    # learning rate for policy
+        self.LR_VALUE = 5e-3     # learning rate for value
+        # how often to update the target network
         self.UPDATE_EVERY = 20
 
         self.device = device
@@ -208,7 +258,7 @@ class ReinforceMCwithBaselineAgent:
         self.episode_history.clear()
         self.time_step = 0
 
-        '''Network'''
+        '''Policy Network'''
         self.policy_network = PolicyNetwork(
             self.state_size,
             self.action_size,
@@ -216,6 +266,7 @@ class ReinforceMCwithBaselineAgent:
             hidden_layer_sizes=[64, 64, 64]
         ).to(self.device)
 
+        '''Local and Target Value Network'''
         self.value_network_local = ValueNetwork(
             self.state_size,
             seed,
@@ -236,15 +287,19 @@ class ReinforceMCwithBaselineAgent:
         )
 
     def update_hyperparameters(self, **kwargs):
-        '''The function updates hyper parameters overriding the
-        default values
-        '''
+        """This function updates hyperparameters overriding the
+        default values.
+        """
         for key, value in kwargs.items():
             setattr(self, key, value)
 
         self.reset()
 
     def update_agent_parameters(self):
+        """ Updates the Policy Network with a sampled trajectory, after every episode.
+        """
+
+        # Computing the discounted returns
         discounted_returns = []
         G = 0
         for step in reversed(self.episode_history):
@@ -252,6 +307,7 @@ class ReinforceMCwithBaselineAgent:
             discounted_returns.append(G)
         discounted_returns.reverse()
 
+        # Unpack the experiences and Repack as torch.tensors
         states = torch.tensor(
             np.array([e.state for e in self.episode_history]),
             dtype=torch.float32,
@@ -271,14 +327,18 @@ class ReinforceMCwithBaselineAgent:
         with torch.no_grad():
             state_values = self.value_network_local(states).detach().squeeze()
 
+        # Computing the log-probabilites for the chosen actions (to compute loss)
         action_probs = self.policy_network(states)
         dist = Categorical(action_probs)
         log_probs = dist.log_prob(actions)
         discounts = self.GAMMA**torch.arange(0, len(self.episode_history),
                                              dtype=torch.float32,
                                              device=self.device)
-
+        
+        # Using state_values as a baseline
         advantages = returns - state_values
+
+        # Updating the Policy Network by accumulating the gradients
         policy_loss = -(discounts * advantages * log_probs).mean()
 
         self.policy_optimizer.zero_grad()
@@ -288,10 +348,16 @@ class ReinforceMCwithBaselineAgent:
                 param.grad.data.clamp_(-1, 1)
         self.policy_optimizer.step()
 
+        # Clear the history (to store the next trajectory)
         self.episode_history.clear()
 
 
     def step(self, state, action, reward, next_state, done):
+        """Stores the state-transition for each step to 
+        episode_history (to be used after the episode to update the Policy Network).
+
+        Also updates the Value Network using the transition by applying a TD(0) update. 
+        """
         e = self.experience(state, action, reward, next_state, done)
 
         self.episode_history.append(e)
@@ -302,7 +368,10 @@ class ReinforceMCwithBaselineAgent:
         state_value = self.value_network_local(state).squeeze()
         next_state_value = self.value_network_target(next_state).squeeze()
 
+        # Get the target values based on the TD update rule
         td_target = reward + self.GAMMA*next_state_value*(1-done)
+
+        # Update the Value Network
         value_loss = F.mse_loss(state_value, td_target)
 
         self.value_optimizer.zero_grad()
@@ -312,6 +381,7 @@ class ReinforceMCwithBaselineAgent:
                 param.grad.data.clamp_(-1, 1)
         self.value_optimizer.step()
 
+        # Update the target network with values from local network
         self.time_step = (self.time_step + 1) % self.UPDATE_EVERY
         if self.time_step == 0:
             self.value_network_target.load_state_dict(
@@ -319,6 +389,8 @@ class ReinforceMCwithBaselineAgent:
             )
 
     def act(self, state):
+        """Selects an action based on the probabilites output by the Policy Network.
+        """
         state = torch.tensor(state, dtype=torch.float32,
                              device=self.device).unsqueeze(0)
 
