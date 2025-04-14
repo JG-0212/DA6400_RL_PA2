@@ -56,7 +56,8 @@ Lalit Jayanti ME21B096
   - Cartpole REINFORCE  : [cartpole_reinforce_training.ipynb](cartpole_reinforce_train.ipynb)
   - Acrobot DDQN  : [acrobot_ddqn_training.ipynb](acrobot_ddqn_train.ipynb)
   - Acrobot REINFORCE  : [acrobot_reinforce_training.ipynb](acrobot_reinforce_train.ipynb)
-  - Make sure to select the correct kernel for your system from the top-right corner of your notebook, while running the above notebooks
+  - Make sure to select the correct kernel for your system from the top-right corner of your notebook, while running the above notebooks.
+  - Make sure to create the folders ```backups/cartpole-plots``` and ```backups/acrobot-plots``` to store the results.
 
 ## Results
 Following are a few visualizations showing the performance of the DDQN and MC-REINFORCE agents of different types in the respective environments. One result is shown for each Dueling DQN (Type 1, Type 2), Monte-Carlo REINFORCE (Type 1, Type 2) in that order.
