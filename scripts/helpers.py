@@ -38,8 +38,8 @@ def compute_decay(param_start, param_end, frac_episodes_to_decay, num_episodes, 
     start to end in a fixed number of episodes.
     """
     if decay_type == 'linear':
-        param_decay = (param_start-param_end) / \
-            (frac_episodes_to_decay*num_episodes)
+        param_decay = ((param_start-param_end) /
+                       (frac_episodes_to_decay*num_episodes))
     elif decay_type == 'exponential':
         param_decay = 10 ** (np.log10(param_end/param_start) /
                              (frac_episodes_to_decay*num_episodes))
