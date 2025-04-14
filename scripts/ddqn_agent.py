@@ -186,8 +186,8 @@ class DDQNAgent:
                                               seed, self.device)
 
     def update_hyperparameters(self, **kwargs):
-        """The function updates hyper parameters overriding the
-        default values
+        """This function updates hyperparameters overriding the
+        default values.
         """
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -195,7 +195,7 @@ class DDQNAgent:
         self.reset()
 
     def update_agent_parameters(self):
-        """Updates epsilon (for epsilon-greedy action selection by the agent)
+        """Updates epsilon (for epsilon-greedy action selection by the agent).
         """
         if self.decay_type == 'linear':
             self.eps = max(self.eps_end, self.eps - self.eps_decay)
